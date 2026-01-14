@@ -78,6 +78,7 @@ mark_completed() {
 # Function to download, extract, and cleanup a single file
 process_file() {
     local filename="$1"
+    local flatten_top_dir="$2"  # If "true", remove top-level directory from zip
     local url="${BASE_URL}/${filename}"
     local dest_path="${DEST_DIR}/${filename}"
 
@@ -97,10 +98,38 @@ process_file() {
 
     echo "[EXTRACT] $filename"
     
-    # Extract to destination directory
-    if ! unzip -o -q "$dest_path" -d "$DEST_DIR"; then
-        echo "[ERROR] Failed to extract $filename"
-        return 1
+    if [[ "$flatten_top_dir" == "true" ]]; then
+        # Extract to a temp directory, then move contents up
+        local temp_extract_dir="${DEST_DIR}/.temp_extract_$$"
+        mkdir -p "$temp_extract_dir"
+        
+        if ! unzip -o -q "$dest_path" -d "$temp_extract_dir"; then
+            echo "[ERROR] Failed to extract $filename"
+            rm -rf "$temp_extract_dir"
+            return 1
+        fi
+        
+        # Find and remove the top-level directory wrapper
+        # Move contents of the single top-level dir to destination
+        local top_level_dir
+        top_level_dir=$(find "$temp_extract_dir" -mindepth 1 -maxdepth 1 -type d | head -1)
+        
+        if [[ -n "$top_level_dir" ]]; then
+            # Move all contents from top-level dir to destination
+            mv "$top_level_dir"/* "$DEST_DIR"/ 2>/dev/null || true
+            mv "$top_level_dir"/.[!.]* "$DEST_DIR"/ 2>/dev/null || true
+        else
+            # No top-level dir, move everything directly
+            mv "$temp_extract_dir"/* "$DEST_DIR"/ 2>/dev/null || true
+        fi
+        
+        rm -rf "$temp_extract_dir"
+    else
+        # Extract directly to destination
+        if ! unzip -o -q "$dest_path" -d "$DEST_DIR"; then
+            echo "[ERROR] Failed to extract $filename"
+            return 1
+        fi
     fi
 
     echo "[CLEANUP] Removing $filename"
@@ -138,23 +167,23 @@ echo "Progress file: $COMPLETED_FILE"
 echo "=========================================="
 echo ""
 
-# Process directory files
+# Process xlogfiles first (extract directly, no flattening)
 count=0
+if [[ $count -lt $files_to_process ]]; then
+    process_file "nld-nao_xlogfiles.zip" "false"
+    count=$((count + 1))
+fi
+
+# Process directory files (flatten top-level directory)
 for suffix in "${FILE_SUFFIXES[@]}"; do
     if [[ $count -ge $files_to_process ]]; then
         break
     fi
     
     filename="nld-nao-dir-${suffix}.zip"
-    process_file "$filename"
+    process_file "$filename" "true"
     count=$((count + 1))
 done
-
-# Process xlogfiles if we haven't hit the limit
-if [[ $count -lt $files_to_process ]]; then
-    process_file "nld-nao_xlogfiles.zip"
-    count=$((count + 1))
-fi
 
 echo ""
 echo "=========================================="
