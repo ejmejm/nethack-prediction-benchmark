@@ -16,7 +16,7 @@ dl = OrderedNetHackDataloader(
 # Collect stats for first few games
 game_steps = Counter()
 total_steps = 0
-num_games_to_load = 70
+num_games_to_load = 10
 
 start_time = time.time()
 for batch in dl:

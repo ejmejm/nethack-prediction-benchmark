@@ -1,12 +1,14 @@
 """Create ordered dataset from NetHack Learning NAO dataset.
 
 This script queries the ttyrecs.db database and creates an ordered index table
-that sorts games by: player median score -> player name -> game start time.
+that sorts games by: player mean score (from games with >= 50 turns) -> player name -> game start time.
 """
 
 import argparse
-import sqlite3
+from collections import defaultdict
 from pathlib import Path
+import statistics
+import sqlite3
 from typing import Optional
 
 
@@ -43,7 +45,7 @@ def create_ordered_dataset(
     # Step 1: Get all games with player info
     print("Querying games from database...")
     query = """
-        SELECT gameid, name, birthdate, points
+        SELECT gameid, name, birthdate, points, turns
         FROM games
         WHERE name IS NOT NULL AND birthdate IS NOT NULL
     """
@@ -51,13 +53,10 @@ def create_ordered_dataset(
     games = cursor.fetchall()
     print(f"Found {len(games)} games")
 
-    # Step 2: Group by player and compute median scores
-    from collections import defaultdict
-    import statistics
-
+    # Step 2: Group by player
     player_games = defaultdict(list)
-    for gameid, name, birthdate, points in games:
-        player_games[name].append((gameid, birthdate, points))
+    for gameid, name, birthdate, points, turns in games:
+        player_games[name].append((gameid, birthdate, points, turns))
 
     # Step 3: Filter players if min_games is specified
     if min_games is not None:
@@ -70,30 +69,32 @@ def create_ordered_dataset(
         player_games = filtered_players
         print(f"Kept {len(player_games)} players after filtering")
 
-    # Step 4: Compute median score per player
-    print("Computing median scores per player...")
-    player_medians = {}
+    # Step 4: Compute mean score per player (only from games with >= 50 turns)
+    print("Computing mean scores per player (from games with >= 50 turns)...")
+    player_means = {}
     for name, games_list in player_games.items():
-        scores = [points for _, _, points in games_list if points is not None]
+        # Only consider games with at least 50 turns for mean calculation
+        scores = [points for _, _, points, turns in games_list 
+                  if points is not None and turns is not None and turns >= 50]
         if scores:
-            player_medians[name] = statistics.median(scores)
+            player_means[name] = statistics.mean(scores)
         else:
-            player_medians[name] = 0
+            player_means[name] = 0
 
     # Step 5: Sort games
-    # Sort order: player median score -> player name -> game start time
+    # Sort order: player mean score -> player name -> game start time
     print("Sorting games...")
     all_games_sorted = []
     for name, games_list in player_games.items():
-        median_score = player_medians[name]
+        mean_score = player_means[name]
         # Sort games within each player by start time
         games_list_sorted = sorted(games_list, key=lambda x: x[1])
-        for gameid, birthdate, points in games_list_sorted:
+        for gameid, birthdate, points, turns in games_list_sorted:
             all_games_sorted.append((
-                gameid, name, median_score, birthdate
+                gameid, name, mean_score, birthdate
             ))
 
-    # Sort by median score, then name, then birthdate
+    # Sort by mean score, then name, then birthdate
     all_games_sorted.sort(key=lambda x: (x[2], x[1], x[3]))
 
     # Step 6: Create ordered_games table
@@ -103,7 +104,7 @@ def create_ordered_dataset(
             order_idx INTEGER PRIMARY KEY,
             gameid INTEGER NOT NULL,
             name TEXT NOT NULL,
-            median_score REAL NOT NULL,
+            mean_score REAL NOT NULL,
             birthdate INTEGER NOT NULL,
             FOREIGN KEY (gameid) REFERENCES games(gameid)
         )
@@ -113,11 +114,11 @@ def create_ordered_dataset(
     print(f"Inserting {len(all_games_sorted)} games into '{output_table}'...")
     cursor.executemany(
         f"""
-        INSERT INTO {output_table} (order_idx, gameid, name, median_score, birthdate)
+        INSERT INTO {output_table} (order_idx, gameid, name, mean_score, birthdate)
         VALUES (?, ?, ?, ?, ?)
         """,
-        [(idx, gameid, name, median_score, birthdate)
-         for idx, (gameid, name, median_score, birthdate)
+        [(idx, gameid, name, mean_score, birthdate)
+         for idx, (gameid, name, mean_score, birthdate)
          in enumerate(all_games_sorted)]
     )
 
