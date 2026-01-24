@@ -32,7 +32,12 @@ def create_ordered_dataset(
         (output_table,)
     )
     if cursor.fetchone():
-        print(f"Table '{output_table}' already exists. Dropping it...")
+        confirm = input(f"Table '{output_table}' already exists. Drop it? [y/N]: ").strip().lower()
+        if confirm != "y":
+            print("Aborted: Table was not dropped or overwritten.")
+            conn.close()
+            return
+        print(f"Dropping table '{output_table}'...")
         cursor.execute(f"DROP TABLE {output_table}")
 
     # Step 1: Get all games with player info
