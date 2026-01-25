@@ -1,6 +1,6 @@
 # NetHack Prediction Benchmark
 
-A dataset and dataloader for testing supervised streaming learning algorithms on ordered NetHack game data.
+A dataset and dataloader for testing continual learning algorithms on ordered NetHack game data.
 
 ## Installation
 
