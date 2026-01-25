@@ -9,23 +9,30 @@ import pytest
 # Add timeout to all tests
 pytestmark = pytest.mark.timeout(10)
 
-from nethack_benchmark import OrderedNetHackDataloader
+from nle_prediction import OrderedNetHackDataloader
 
 
 @pytest.fixture
-def db_path():
-    """Path to the test database."""
-    db = Path("ttyrecs.db")
-    if not db.exists():
-        pytest.skip("ttyrecs.db not found. Run download script first.")
-    return str(db)
+def data_dir():
+    """Path to the test data directory."""
+    data_path = Path("./data/nld-nao")
+    db_path = data_path / "ttyrecs.db"
+    if not db_path.exists():
+        pytest.skip("ttyrecs.db not found. Run setup script first.")
+    return str(data_path)
 
 
 @pytest.fixture
-def dataloader(db_path):
+def db_path(data_dir):
+    """Path to the test database (for backward compatibility with tests)."""
+    return str(Path(data_dir) / "ttyrecs.db")
+
+
+@pytest.fixture
+def dataloader(data_dir):
     """Create a dataloader instance."""
     return OrderedNetHackDataloader(
-        db_path=db_path,
+        data_dir=data_dir,
         batch_size=1,
         format="raw",
         prefetch=0
@@ -119,8 +126,12 @@ def test_games_load_completely_in_sequence(db_path):
     ordered_gameids = [row[0] for row in test_games]
     turns_by_gameid = {row[0]: row[1] for row in test_games}
 
+    # Get data_dir from db_path
+    from pathlib import Path
+    data_dir = str(Path(db_path).parent)
+    
     dataloader = OrderedNetHackDataloader(
-        db_path=db_path,
+        data_dir=data_dir,
         batch_size=1,
         format="raw",
     )
@@ -177,10 +188,10 @@ def test_batch_format_raw(dataloader):
 
 
 @pytest.mark.timeout(10)
-def test_batch_format_one_hot(db_path):
+def test_batch_format_one_hot(data_dir):
     """Test that one_hot format returns expected structure."""
     dataloader = OrderedNetHackDataloader(
-        db_path=db_path,
+        data_dir=data_dir,
         batch_size=1,
         format="one_hot",
         prefetch=0
@@ -251,7 +262,7 @@ def test_ordered_games_table_has_correct_structure(db_path):
 
 
 @pytest.mark.timeout(10)
-def test_dataloader_follows_ordered_games_table_order(db_path):
+def test_dataloader_follows_ordered_games_table_order(db_path, data_dir):
     """Test that dataloader follows the order specified in ordered_games table."""
     # Get first 2 games from ordered_games table
     conn = sqlite3.connect(db_path)
@@ -280,7 +291,7 @@ def test_dataloader_follows_ordered_games_table_order(db_path):
     
     # Create dataloader and collect gameids in order
     dataloader = OrderedNetHackDataloader(
-        db_path=db_path,
+        data_dir=data_dir,
         batch_size=1,
         format="raw",
         prefetch=0
@@ -336,7 +347,7 @@ def test_dataloader_follows_ordered_games_table_order(db_path):
 
 
 @pytest.mark.timeout(10)
-def test_step_counts_match_turns_from_ordered_games(db_path):
+def test_step_counts_match_turns_from_ordered_games(db_path, data_dir):
     """Test that step counts match turns for games from ordered_games table."""
     # Get first 1 game with very small turn count
     conn = sqlite3.connect(db_path)

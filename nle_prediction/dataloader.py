@@ -26,30 +26,44 @@ class OrderedNetHackDataloader:
 
     def __init__(
         self,
-        db_path: str = "ttyrecs.db",
+        data_dir: str = "./data/nld-nao",
         dataset_name: str = "nld-nao-v0",
         batch_size: int = 1,
         format: Literal["raw", "one_hot"] = "raw",
         prefetch: int = 0,
         ordered_table: str = "ordered_games",
+        auto_create_ordered: bool = True,
+        min_games: Optional[int] = None,
     ):
         """Initialize the dataloader.
 
+        The database is expected to be at {data_dir}/ttyrecs.db.
+
         Args:
-            db_path: Path to the ttyrecs.db SQLite database.
+            data_dir: Path to the data directory. The database should be at
+                {data_dir}/ttyrecs.db.
             dataset_name: Name of the dataset in the database.
             batch_size: Number of samples per batch.
             format: Output format - "raw" returns NLE-style dicts,
                 "one_hot" returns preprocessed tensors.
             prefetch: Number of batches to prefetch in background (0 = no prefetch).
             ordered_table: Name of the ordered games table.
+            auto_create_ordered: If True, automatically create ordered dataset if it
+                doesn't exist. Default: True.
+            min_games: Minimum number of games per player to include when creating
+                ordered dataset. Only used if auto_create_ordered is True.
         """
-        self.db_path = db_path
+        from pathlib import Path
+        data_dir_path = Path(data_dir).resolve()
+        self.data_dir = str(data_dir_path)
+        self.db_path = str(data_dir_path / "ttyrecs.db")
         self.dataset_name = dataset_name
         self.batch_size = batch_size
         self.format = format
         self.prefetch = prefetch
         self.ordered_table = ordered_table
+        self.auto_create_ordered = auto_create_ordered
+        self.min_games = min_games
 
         # Connect to database and get ordered game list
         self._load_ordered_games()
@@ -82,10 +96,29 @@ class OrderedNetHackDataloader:
             (self.ordered_table,)
         )
         if not cursor.fetchone():
-            raise ValueError(
-                f"Ordered table '{self.ordered_table}' not found. "
-                "Run create_ordered_dataset.py first."
-            )
+            if self.auto_create_ordered:
+                print(f"Ordered table '{self.ordered_table}' not found. Creating automatically...")
+                from .create_ordered_dataset import create_ordered_dataset
+                create_ordered_dataset(
+                    self.db_path,
+                    min_games=self.min_games,
+                    output_table=self.ordered_table,
+                    force=False
+                )
+                # Re-check after creation
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (self.ordered_table,)
+                )
+                if not cursor.fetchone():
+                    raise RuntimeError(
+                        f"Failed to create ordered table '{self.ordered_table}'"
+                    )
+            else:
+                raise ValueError(
+                    f"Ordered table '{self.ordered_table}' not found. "
+                    "Run create_ordered_dataset.py first, or set auto_create_ordered=True."
+                )
 
         # Get all ordered games
         cursor.execute(
@@ -104,15 +137,26 @@ class OrderedNetHackDataloader:
         print(f"Loaded {len(self.ordered_games)} games in order")
 
     def _get_ttyrec_dataset(self) -> nld.TtyrecDataset:
-        """Get or create the TtyrecDataset instance."""
+        """Get or create the TtyrecDataset instance.
+        
+        Note: nld.TtyrecDataset expects the database to be in the current working
+        directory. This function temporarily changes to the data directory.
+        """
+        import os
         if self._ttyrec_dataset is None:
-            self._ttyrec_dataset = nld.TtyrecDataset(
-                self.dataset_name,
-                batch_size=1,
-                seq_length=1,
-                shuffle=False,
-                loop_forever=False,
-            )
+            # Change to data directory since TtyrecDataset expects db in current dir
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(self.data_dir)
+                self._ttyrec_dataset = nld.TtyrecDataset(
+                    self.dataset_name,
+                    batch_size=1,
+                    seq_length=1,
+                    shuffle=False,
+                    loop_forever=False,
+                )
+            finally:
+                os.chdir(original_cwd)
         return self._ttyrec_dataset
 
     def _get_game_steps(self, gameid: int) -> List[Dict]:
@@ -124,16 +168,22 @@ class OrderedNetHackDataloader:
         Returns:
             List of step dictionaries, each containing one timestep of data.
         """
+        import os
         dataset = self._get_ttyrec_dataset()
 
         # Use get_ttyrec to efficiently load all data for this game
         # This directly looks up file paths without iterating through all games
+        # Change to data directory since dataset expects db in current dir
+        original_cwd = os.getcwd()
         try:
+            os.chdir(self.data_dir)
             minibatches = dataset.get_ttyrec(gameid, chunk_size=1)
         except Exception as e:
             # Game might not be in the dataset
             print(f"Warning: Could not load game {gameid}: {e}")
             return []
+        finally:
+            os.chdir(original_cwd)
 
         # Convert minibatches to individual step dicts
         steps = []

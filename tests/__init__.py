@@ -1,1 +1,1 @@
-"""Tests for nethack_benchmark package."""
+"""Tests for nle_prediction package."""

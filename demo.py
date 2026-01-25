@@ -3,11 +3,11 @@
 import time
 from collections import Counter
 
-from nethack_benchmark import OrderedNetHackDataloader
+from nle_prediction import OrderedNetHackDataloader
 
 # Create dataloader
 dl = OrderedNetHackDataloader(
-    db_path = "ttyrecs.db",
+    data_dir = "./data/nld-nao",
     batch_size = 10,
     format = "raw",
     prefetch = 0,
@@ -41,7 +41,7 @@ for i, (gid, steps) in enumerate(game_steps.items()):
 print(f"\n{'='*50}")
 print("Sample batch structure (batch size = 3):")
 print(f"{'='*50}")
-dl2 = OrderedNetHackDataloader(db_path="ttyrecs.db", batch_size=3, format="raw")
+dl2 = OrderedNetHackDataloader(data_dir="./data/nld-nao", batch_size=3, format="raw")
 batch = next(iter(dl2))
 for key, val in batch.items():
     shape = val.shape if hasattr(val, "shape") else len(val)

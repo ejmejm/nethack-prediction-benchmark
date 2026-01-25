@@ -15,7 +15,8 @@ from typing import Optional
 def create_ordered_dataset(
     db_path: str,
     min_games: Optional[int] = None,
-    output_table: str = "ordered_games"
+    output_table: str = "ordered_games",
+    force: bool = False
 ) -> None:
     """Create ordered dataset index in the database.
 
@@ -24,6 +25,8 @@ def create_ordered_dataset(
         min_games: Minimum number of games per player to include. If None, no
             filtering is applied.
         output_table: Name of the output table to create.
+        force: If True, drop existing table without prompt. If False and table
+            exists, raise ValueError. Default: False.
     """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -34,13 +37,15 @@ def create_ordered_dataset(
         (output_table,)
     )
     if cursor.fetchone():
-        confirm = input(f"Table '{output_table}' already exists. Drop it? [y/N]: ").strip().lower()
-        if confirm != "y":
-            print("Aborted: Table was not dropped or overwritten.")
+        if force:
+            print(f"Dropping existing table '{output_table}'...")
+            cursor.execute(f"DROP TABLE {output_table}")
+        else:
             conn.close()
-            return
-        print(f"Dropping table '{output_table}'...")
-        cursor.execute(f"DROP TABLE {output_table}")
+            raise ValueError(
+                f"Table '{output_table}' already exists. "
+                "Use force=True to overwrite, or drop the table manually."
+            )
 
     # Step 1: Get all games with player info
     print("Querying games from database...")
@@ -158,6 +163,11 @@ def main():
         default="ordered_games",
         help="Name of output table (default: ordered_games)"
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force overwrite existing table without prompt"
+    )
 
     args = parser.parse_args()
 
@@ -168,7 +178,8 @@ def main():
     create_ordered_dataset(
         str(db_path),
         min_games=args.min_games,
-        output_table=args.output_table
+        output_table=args.output_table,
+        force=args.force
     )
 
 
