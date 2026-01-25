@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nle-prediction"
+version = "0.1.0"
+description = "NetHack Prediction Benchmark - A dataset and dataloader for testing streaming learning algorithms on ordered NetHack game data"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "NetHack Prediction Benchmark Contributors"}
+]
+keywords = ["nethack", "machine-learning", "dataset", "streaming-learning", "benchmark"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "nle>=1.2.0",
+    "numpy>=1.20.0",
+    "requests>=2.25.0",
+    "tqdm>=4.60.0",
+]
+
+[project.scripts]
+nle-prediction = "nle_prediction.setup_cli:main"
+
+[tool.setuptools]
+packages = ["nle_prediction"]
+
+[tool.setuptools.package-data]
+nle_prediction = []
