@@ -1,0 +1,9 @@
+include README.md
+include LICENSE
+include pyproject.toml
+include requirements.txt
+recursive-include nle_prediction *.py
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude *.db
+global-exclude data/*
