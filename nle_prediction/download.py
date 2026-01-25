@@ -217,13 +217,18 @@ def download_nld_nao(
     data_dir: str = "./data/nld-nao",
     num_files: Optional[int] = None,
     resume: bool = True
-) -> None:
+) -> tuple[bool, int]:
     """Download NLD-NAO dataset files.
 
     Args:
         data_dir: Destination directory for downloaded files.
         num_files: Number of files to download. If None, download all files.
         resume: If True, resume from where download left off. Default: True.
+        
+    Returns:
+        Tuple of (new_files_downloaded, total_files_processed):
+        - new_files_downloaded: True if any new files were downloaded (not skipped)
+        - total_files_processed: Number of files processed (including skipped)
     """
     dest_dir = Path(data_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -252,12 +257,15 @@ def download_nld_nao(
     print()
 
     count = 0
+    new_files_downloaded = False
 
     # Process xlogfiles first (extract directly, no flattening)
     if count < files_to_process:
         count += 1
+        was_skipped = _is_completed("nld-nao_xlogfiles.zip", completed_file)
         if _process_file("nld-nao_xlogfiles.zip", dest_dir, completed_file, False, count, files_to_process):
-            pass  # Count already incremented
+            if not was_skipped:
+                new_files_downloaded = True
         else:
             count -= 1  # Revert if failed
 
@@ -268,8 +276,10 @@ def download_nld_nao(
 
         filename = f"nld-nao-dir-{suffix}.zip"
         count += 1
+        was_skipped = _is_completed(filename, completed_file)
         if _process_file(filename, dest_dir, completed_file, True, count, files_to_process):
-            pass  # Count already incremented
+            if not was_skipped:
+                new_files_downloaded = True
         else:
             count -= 1  # Revert if failed
 
@@ -278,3 +288,5 @@ def download_nld_nao(
     print("Download complete!")
     print(f"Processed {count} files")
     print("=" * 50)
+    
+    return new_files_downloaded, count

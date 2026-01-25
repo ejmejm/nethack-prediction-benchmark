@@ -1,6 +1,7 @@
 """Dataset creation utilities for NetHack Learning NAO dataset."""
 
 import os
+import sqlite3
 from pathlib import Path
 from typing import Optional
 
@@ -45,9 +46,46 @@ def create_database(data_dir: str) -> None:
     print("Database created successfully")
 
 
+def _dataset_exists(db_path: str, dataset_name: str) -> bool:
+    """Check if a dataset already exists in the database.
+
+    Args:
+        db_path: Path to the database file.
+        dataset_name: Name of the dataset to check.
+
+    Returns:
+        True if the dataset exists, False otherwise.
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Check if roots table exists and contains the dataset
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='roots'
+        """)
+        if not cursor.fetchone():
+            conn.close()
+            return False
+        
+        # Check if dataset_name exists in roots table
+        cursor.execute("""
+            SELECT COUNT(*) FROM roots WHERE dataset_name = ?
+        """, (dataset_name,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        
+        return count > 0
+    except Exception:
+        # If there's any error checking, assume it doesn't exist
+        return False
+
+
 def add_dataset_from_directory(
     data_dir: str,
-    dataset_name: str
+    dataset_name: str,
+    skip_if_exists: bool = True
 ) -> None:
     """Add downloaded data directory to the database.
 
@@ -60,6 +98,7 @@ def add_dataset_from_directory(
         data_dir: Path to the directory containing downloaded NLD-NAO data.
             The database should be at {data_dir}/ttyrecs.db.
         dataset_name: Name to use for the dataset in the database.
+        skip_if_exists: If True, skip adding if dataset already exists. Default: True.
     """
     data_dir_path = Path(data_dir).resolve()
     if not data_dir_path.exists():
@@ -68,6 +107,17 @@ def add_dataset_from_directory(
     db_path_obj = data_dir_path / "ttyrecs.db"
     if not db_path_obj.exists():
         raise ValueError(f"Database does not exist: {db_path_obj}. Create it first.")
+
+    # Check if dataset already exists
+    if _dataset_exists(str(db_path_obj), dataset_name):
+        if skip_if_exists:
+            print(f"Dataset '{dataset_name}' already exists in the database. Skipping.")
+            return
+        else:
+            raise ValueError(
+                f"Dataset '{dataset_name}' already exists in the database. "
+                "Use force=True to recreate it."
+            )
 
     print(f"Adding dataset '{dataset_name}' from {data_dir}...")
     
@@ -84,10 +134,35 @@ def add_dataset_from_directory(
     print(f"Dataset '{dataset_name}' added successfully")
 
 
+def _prompt_rebuild_dataset() -> bool:
+    """Prompt user if they want to rebuild the dataset.
+    
+    Returns:
+        True if user wants to rebuild, False otherwise.
+    """
+    print("\n" + "=" * 50)
+    print("Dataset already exists in the database.")
+    print("=" * 50)
+    print("If you have downloaded more data files since the last time")
+    print("the database was created, you should rebuild the database to")
+    print("include the new files.")
+    print("=" * 50)
+    
+    while True:
+        response = input("\nDo you want to rebuild the database? [y/N]: ").strip().lower()
+        if response in ('y', 'yes'):
+            return True
+        elif response in ('n', 'no', ''):
+            return False
+        else:
+            print("Please enter 'y' for yes or 'n' for no.")
+
+
 def create_dataset(
     data_dir: str,
     dataset_name: str = "nld-nao-v0",
-    force: bool = False
+    force: bool = False,
+    new_files_downloaded: bool = False
 ) -> None:
     """Create database and add dataset from downloaded data directory.
 
@@ -101,14 +176,31 @@ def create_dataset(
             The database will be created at {data_dir}/ttyrecs.db.
         dataset_name: Name to use for the dataset in the database.
         force: If True, recreate the database even if it exists. Default: False.
+        new_files_downloaded: If True, new files were downloaded in this run,
+            so automatically rebuild the dataset. Default: False.
     """
     data_dir_path = Path(data_dir).resolve()
     data_dir_path.mkdir(parents=True, exist_ok=True)
     
     db_path_obj = data_dir_path / "ttyrecs.db"
-
-    if force and db_path_obj.exists():
-        print(f"Force mode: removing existing database at {db_path_obj}...")
+    
+    # Check if dataset exists
+    dataset_exists = db_path_obj.exists() and _dataset_exists(str(db_path_obj), dataset_name)
+    
+    # Determine if we should rebuild
+    should_rebuild = force
+    
+    if not should_rebuild and dataset_exists:
+        if new_files_downloaded:
+            # New files were downloaded, automatically rebuild
+            print("New files were downloaded. Rebuilding database to include them...")
+            should_rebuild = True
+        else:
+            # No new files, but dataset exists - prompt user
+            should_rebuild = _prompt_rebuild_dataset()
+    
+    if should_rebuild and db_path_obj.exists():
+        print(f"Removing existing database at {db_path_obj}...")
         db_path_obj.unlink()
 
     # Create database if it doesn't exist
@@ -117,5 +209,5 @@ def create_dataset(
     else:
         print(f"Using existing database at {db_path_obj}")
 
-    # Add dataset from directory
-    add_dataset_from_directory(data_dir, dataset_name)
+    # Add dataset from directory (will skip if already exists, but we've handled that above)
+    add_dataset_from_directory(data_dir, dataset_name, skip_if_exists=True)

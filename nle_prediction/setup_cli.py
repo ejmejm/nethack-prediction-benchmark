@@ -29,11 +29,12 @@ def setup_dataset(
         skip_download: If True, skip downloading and only create dataset.
         skip_dataset: If True, skip dataset creation and only download.
     """
+    new_files_downloaded = False
     if not skip_download:
         print("=" * 50)
         print("Step 1: Downloading NLD-NAO dataset files")
         print("=" * 50)
-        download_nld_nao(data_dir=data_dir, num_files=num_files)
+        new_files_downloaded, _ = download_nld_nao(data_dir=data_dir, num_files=num_files)
         print()
 
     if not skip_dataset:
@@ -43,7 +44,8 @@ def setup_dataset(
         create_dataset(
             data_dir=data_dir,
             dataset_name=dataset_name,
-            force=force
+            force=force,
+            new_files_downloaded=new_files_downloaded
         )
         print()
 
