@@ -13,7 +13,7 @@ pip install nle-prediction
 Or install from source:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/ejmejm/nethack-prediction-benchmark.git
 cd nethack_prediction_benchmark
 pip install -e .
 ```
